@@ -57,12 +57,11 @@ void setup() {
 
   if (connectToNetwork(SSID, PASSWORD) != 0) {
     Paperdink.epd.setCursor(0, 10);
+    Paperdink.epd.drawBitmap(370, 4, wifi_off_sml, wifi_off_sml_width, wifi_off_sml_height, GxEPD_BLACK);
     Paperdink.epd.print("No internet connection");
     Paperdink.epd.display();
     Paperdink.deep_sleep_button_wakeup(BUTTON_1_PIN);
   }
-
-  Serial.println(WiFi.localIP());
 
   if (Udp.begin(LOCALPORT) == 0) {
     Paperdink.epd.setCursor(0, 10);
@@ -70,6 +69,10 @@ void setup() {
     Paperdink.epd.display();
     Paperdink.deep_sleep_button_wakeup(BUTTON_1_PIN);
   }
+
+  printWeather();
+  printBatteryStatus();
+  Paperdink.epd.display();
 }
 
 void loop() {
@@ -80,16 +83,15 @@ void loop() {
   }
 
   if (runningTimeExceeded()) {
-    Paperdink.epd.setCursor(0, 40);
-    Paperdink.epd.print("Sleeping");
+    printWeather();
     Paperdink.epd.display();
-    Paperdink.deep_sleep_button_wakeup(BUTTON_1_PIN);
+    Paperdink.deep_sleep_timer_button_wakeup(2 * ONE_HOUR, BUTTON_1_PIN);
     Paperdink.disable_everything();
   }
 }
 
 uint runningTimeExceeded() {
-  if (millis() > 1000 * 60 * 60) {
+  if (millis() > ONE_HOUR) {
     return 1;
   }
 
@@ -97,6 +99,7 @@ uint runningTimeExceeded() {
 }
 
 void display(char *content) {
+  Paperdink.epd.fillScreen(GxEPD_WHITE);
   Paperdink.epd.setCursor(0, 40);
   char *part = strtok(content, ";");
   while (part != NULL) {
@@ -104,19 +107,33 @@ void display(char *content) {
     Paperdink.epd.setCursor(0, 60);
     part = strtok(NULL, ";");
   }
+  printBatteryStatus();
   Paperdink.epd.display();
 }
 
-void displayBatteryStatus(GxEPD2_DISPLAY_CLASS<GxEPD2_DRIVER_CLASS, GxEPD2_DRIVER_CLASS::HEIGHT>* display) {
-  uint8_t not_charging = digitalRead(CHARGING_PIN);
+void printBatteryStatus() {
+  uint16_t offset_x = 240;
+  uint16_t offset_y = 280;
+  uint8_t charging = digitalRead(CHARGE_PIN);
+
   adc_power_acquire();
   delay(10);
   adc1_config_width(ADC_WIDTH_BIT_12);
   int batt_adc = adc1_get_raw(BATTERY_VOLTAGE_ADC);
   adc_power_release();
-  pcf8574.digitalWrite(BATT_EN, HIGH);
-  float batt_voltage = (float)((batt_adc/4095.0)*4.2);
-  display->print(batt_voltage);  
+  // pcf8574.digitalWrite(BATT_EN, HIGH);
+  float batt_voltage = (float)((batt_adc / 4095.0) * CHARGING_VOLTAGE);
+  Paperdink.epd.setCursor(offset_x, offset_y);
+  // Paperdink.epd.setFont(&PAPERDINK_FONT_SML);
+  // Paperdink.epd.setTextSize(1);
+  if (charging) {
+    Paperdink.epd.print("Charging");
+  } else {
+    Paperdink.epd.print("Not charging");
+  }
+
+  Paperdink.epd.setCursor(offset_x, offset_y + 10);
+  Paperdink.epd.printf("Battery voltage: %.2fv\n", batt_voltage);
 }
 
 void readPacket(uint packetSize) {
@@ -155,8 +172,22 @@ int connectToNetwork(const char *ssid, const char *password) {
   return 0;
 }
 
-void gatherWeatherData() {
+struct Weather {
+  float currentTemperature;
+  float minimumTemperature;
+  float maximumTemperature;
+};
+
+void printWeather() {
+  struct Weather w = gatherWeatherData();
+  Paperdink.epd.setCursor(10, 40);
+  // Paperdink.epd.setFont(&PAPERDINK_FONT_LRG);
+  Paperdink.epd.printf("%.1f (%.1f/%.1f)", w.currentTemperature, w.minimumTemperature, w.maximumTemperature);
+}
+
+struct Weather gatherWeatherData() {
   WiFiClientSecure *client = new WiFiClientSecure;
+  struct Weather w = {-1,-1,-1};  
   if (client) {
     client->setCACert(cert);
     {
@@ -164,9 +195,10 @@ void gatherWeatherData() {
       HTTPClient https;
 
       Serial.print("[HTTPS] begin...\n");
-      if (https.begin(*client, "https://jigsaw.w3.org/HTTP/connection.html")) {  // HTTPS
+      if (https.begin(*client, "https://api.openweathermap.org/data/2.5/forecast?q=utrecht,netherlands&appid=b8c531c37dd7327df7c2a5080f82cb58&mode=json&cnt=1&units=metric")) {  // HTTPS
         Serial.print("[HTTPS] GET...\n");
         // start connection and send HTTP header
+        https.addHeader("Content-Type", "application/json", 0, 0);
         int httpCode = https.GET();
 
         // httpCode will be negative on error
@@ -176,8 +208,15 @@ void gatherWeatherData() {
 
           // file found at server
           if (httpCode == HTTP_CODE_OK || httpCode == HTTP_CODE_MOVED_PERMANENTLY) {
-            String payload = https.getString();
-            Serial.println(payload);
+            DynamicJsonDocument json(35 * 1024);
+            DeserializationError error = deserializeJson(json, https.getStream());
+            if (error) {
+              Serial.print(F("deserializeJson() failed: "));
+              Serial.println(error.c_str());
+            }
+            w.currentTemperature = json["list"][0]["main"]["temp"];
+            w.minimumTemperature = json["list"][0]["main"]["temp_min"];
+            w.maximumTemperature = json["list"][0]["main"]["temp_max"];
           }
         } else {
           Serial.printf("[HTTPS] GET... failed, error: %s\n", https.errorToString(httpCode).c_str());
@@ -193,4 +232,5 @@ void gatherWeatherData() {
   } else {
     Serial.println("Unable to create client");
   }
+  return (w);
 }
