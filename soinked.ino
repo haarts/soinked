@@ -4,11 +4,13 @@
 #include "driver/adc.h"
 #include "config.h"
 #include <Paperdink.h>
+#include <Fonts/FreeMonoBold24pt7b.h>
 
 PAPERDINK_DEVICE Paperdink;
 WiFiUDP Udp;
 
 char packetBuffer[255];
+char previousPacketBuffer[255];
 
 // Valid till 07 Jul 2023
 static const char *cert = "-----BEGIN CERTIFICATE-----\n"
@@ -58,7 +60,6 @@ void setup() {
   if (connectToNetwork(SSID, PASSWORD) != 0) {
     Paperdink.epd.setCursor(0, 10);
     Paperdink.epd.drawBitmap(370, 4, wifi_off_sml, wifi_off_sml_width, wifi_off_sml_height, GxEPD_BLACK);
-    Paperdink.epd.print("No internet connection");
     Paperdink.epd.display();
     Paperdink.deep_sleep_button_wakeup(BUTTON_1_PIN);
   }
@@ -79,7 +80,15 @@ void loop() {
   int packetSize = Udp.parsePacket();
   if (packetSize) {
     readPacket(packetSize);
-    display(packetBuffer);
+    Serial.println(packetBuffer);
+    Serial.println(previousPacketBuffer);
+    // Serial.println(isSame(&packetBuffer, &previousPacketBuffer));
+    if (isSame(&packetBuffer, &previousPacketBuffer) == 0) {
+      memcpy(previousPacketBuffer, packetBuffer, sizeof(packetBuffer));
+      printSongAndArtist(packetBuffer);
+      printBatteryStatus();
+      Paperdink.epd.display();
+    }
   }
 
   if (runningTimeExceeded()) {
@@ -90,6 +99,18 @@ void loop() {
   }
 }
 
+uint isSame(char (*a)[255], char (*b)[255]) {
+  for (int i = 0; i < sizeof(*a); i++) {
+    Serial.printf("a: %c\n", *a[i]);
+    Serial.printf("b: %c\n", *b[i]);
+    // Serial.printf("a!=b: %d\n", *a[i]!= *b[i]);
+    if (*a[i] != *b[i]) {
+      return 0;
+    }
+  }
+  return 1;
+}
+
 uint runningTimeExceeded() {
   if (millis() > ONE_HOUR) {
     return 1;
@@ -98,17 +119,16 @@ uint runningTimeExceeded() {
   return 0;
 }
 
-void display(char *content) {
+void printSongAndArtist(char *content) {
   Paperdink.epd.fillScreen(GxEPD_WHITE);
-  Paperdink.epd.setCursor(0, 40);
+  Paperdink.epd.setFont(&FreeMonoBold24pt7b);
+  Paperdink.epd.setCursor(10, 40);
   char *part = strtok(content, ";");
   while (part != NULL) {
     Paperdink.epd.print(part);
-    Paperdink.epd.setCursor(0, 60);
+    Paperdink.epd.setCursor(10, 100);
     part = strtok(NULL, ";");
   }
-  printBatteryStatus();
-  Paperdink.epd.display();
 }
 
 void printBatteryStatus() {
@@ -124,8 +144,7 @@ void printBatteryStatus() {
   // pcf8574.digitalWrite(BATT_EN, HIGH);
   float batt_voltage = (float)((batt_adc / 4095.0) * CHARGING_VOLTAGE);
   Paperdink.epd.setCursor(offset_x, offset_y);
-  // Paperdink.epd.setFont(&PAPERDINK_FONT_SML);
-  // Paperdink.epd.setTextSize(1);
+  Paperdink.epd.setFont(NULL);
   if (charging) {
     Paperdink.epd.print("Charging");
   } else {
@@ -179,15 +198,16 @@ struct Weather {
 };
 
 void printWeather() {
+  Paperdink.epd.fillScreen(GxEPD_WHITE);
   struct Weather w = gatherWeatherData();
   Paperdink.epd.setCursor(10, 40);
-  // Paperdink.epd.setFont(&PAPERDINK_FONT_LRG);
+  Paperdink.epd.setFont(&FreeMonoBold24pt7b);
   Paperdink.epd.printf("%.1f (%.1f/%.1f)", w.currentTemperature, w.minimumTemperature, w.maximumTemperature);
 }
 
 struct Weather gatherWeatherData() {
   WiFiClientSecure *client = new WiFiClientSecure;
-  struct Weather w = {-1,-1,-1};  
+  struct Weather w = { -1, -1, -1 };
   if (client) {
     client->setCACert(cert);
     {
@@ -226,8 +246,7 @@ struct Weather gatherWeatherData() {
       } else {
         Serial.printf("[HTTPS] Unable to connect\n");
       }
-      // End extra scoping block
-    }
+    }  // End extra scoping block
     delete client;
   } else {
     Serial.println("Unable to create client");
