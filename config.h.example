@@ -1,0 +1,9 @@
+#define PAPERDINK_DEVICE Paperdink_Classic
+#define SSID     "***" // Wifi Network SSID (name of wifi network)
+#define PASSWORD "***" // Wifi Network password
+
+#define LOCALPORT 2390
+#define ONE_HOUR 1000 * 60 * 60
+
+#define BATTERY_VOLTAGE_ADC ADC1_CHANNEL_3
+#define CHARGING_VOLTAGE 4.2
