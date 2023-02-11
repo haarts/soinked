@@ -4,6 +4,7 @@
 #include "driver/adc.h"
 #include "config.h"
 #include <Paperdink.h>
+#include <Fonts/FreeMonoBold12pt7b.h>
 #include <Fonts/FreeMonoBold24pt7b.h>
 
 PAPERDINK_DEVICE Paperdink;
@@ -108,8 +109,15 @@ void printSongAndArtist(char *content) {
   Paperdink.epd.fillScreen(GxEPD_WHITE);
   Paperdink.epd.setFont(&FreeMonoBold24pt7b);
   Paperdink.epd.setCursor(10, 40);
+  int16_t expected_x, expected_y;
+  uint16_t expected_width, expected_height;
+
   char *part = strtok(content, ";");
   while (part != NULL) {
+    Paperdink.epd.getTextBounds(part, 10, 40, &expected_x, &expected_y, &expected_width, &expected_height);
+    if (expected_width + 40 > 400) {
+      Paperdink.epd.setFont(&FreeMonoBold12pt7b);
+    }
     Paperdink.epd.print(part);
     Paperdink.epd.setCursor(10, 100);
     part = strtok(NULL, ";");
