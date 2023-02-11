@@ -187,7 +187,10 @@ void printWeather() {
   struct Weather w = gatherWeatherData();
   Paperdink.epd.setCursor(10, 40);
   Paperdink.epd.setFont(&FreeMonoBold24pt7b);
-  Paperdink.epd.printf("%.1f (%.1f/%.1f)", w.currentTemperature, w.minimumTemperature, w.maximumTemperature);
+  Paperdink.epd.printf("%.1f (now)\n", w.currentTemperature);
+  Paperdink.epd.setFont(&FreeMonoBold12pt7b);
+  Paperdink.epd.setCursor(10, 100);
+  Paperdink.epd.printf("%.1f/%.1f (min/max)", w.minimumTemperature, w.maximumTemperature);
 }
 
 struct Weather gatherWeatherData() {
