@@ -80,10 +80,7 @@ void loop() {
   int packetSize = Udp.parsePacket();
   if (packetSize) {
     readPacket(packetSize);
-    Serial.println(packetBuffer);
-    Serial.println(previousPacketBuffer);
-    // Serial.println(isSame(&packetBuffer, &previousPacketBuffer));
-    if (isSame(&packetBuffer, &previousPacketBuffer) == 0) {
+    if (strcmp(packetBuffer, previousPacketBuffer) != 0) {
       memcpy(previousPacketBuffer, packetBuffer, sizeof(packetBuffer));
       printSongAndArtist(packetBuffer);
       printBatteryStatus();
@@ -97,18 +94,6 @@ void loop() {
     Paperdink.deep_sleep_timer_button_wakeup(2 * ONE_HOUR, BUTTON_1_PIN);
     Paperdink.disable_everything();
   }
-}
-
-uint isSame(char (*a)[255], char (*b)[255]) {
-  for (int i = 0; i < sizeof(*a); i++) {
-    Serial.printf("a: %c\n", *a[i]);
-    Serial.printf("b: %c\n", *b[i]);
-    // Serial.printf("a!=b: %d\n", *a[i]!= *b[i]);
-    if (*a[i] != *b[i]) {
-      return 0;
-    }
-  }
-  return 1;
 }
 
 uint runningTimeExceeded() {
